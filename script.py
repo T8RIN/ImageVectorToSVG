@@ -1,3 +1,4 @@
+import re
 import os
 from xml.dom.minidom import parseString
 from xml.etree.ElementTree import Element, SubElement, tostring
@@ -27,6 +28,53 @@ COMMAND_MAP = {
 
 def clean_arg(arg):
     return arg.strip().rstrip('f')
+
+
+def extract_vector_params(kotlin_code: str):
+    # Извлекаем размеры
+    width = height = viewbox_w = viewbox_h = None
+    m = re.search(r'defaultWidth\s*=\s*([\d.]+)\.dp', kotlin_code)
+    if m:
+        width = float(m.group(1))
+    m = re.search(r'defaultHeight\s*=\s*([\d.]+)\.dp', kotlin_code)
+    if m:
+        height = float(m.group(1))
+    m = re.search(r'viewportWidth\s*=\s*([\d.]+)f', kotlin_code)
+    if m:
+        viewbox_w = float(m.group(1))
+    m = re.search(r'viewportHeight\s*=\s*([\d.]+)f', kotlin_code)
+    if m:
+        viewbox_h = float(m.group(1))
+    # Цвет и альфа
+    fill = "black"
+    alpha = None
+    m = re.search(r'fill\s*=\s*SolidColor\(Color\(0x([0-9A-Fa-f]{8})\)\)', kotlin_code)
+    if m:
+        hex_color = m.group(1)
+        a = int(hex_color[0:2], 16) / 255
+        fill = f"#{hex_color[2:]}"
+        alpha = a
+    # fillAlpha
+    fill_alpha = None
+    m = re.search(r'fillAlpha\s*=\s*([\d.]+)f', kotlin_code)
+    if m:
+        fill_alpha = float(m.group(1))
+    # Итоговая прозрачность
+    final_alpha = None
+    if alpha is not None and fill_alpha is not None:
+        final_alpha = alpha * fill_alpha
+    elif alpha is not None:
+        final_alpha = alpha
+    elif fill_alpha is not None:
+        final_alpha = fill_alpha
+    return {
+        "width": width or 24,
+        "height": height or 24,
+        "viewbox_w": viewbox_w or width or 24,
+        "viewbox_h": viewbox_h or height or 24,
+        "fill": fill,
+        "alpha": final_alpha
+    }
 
 
 def extract_path_data(kotlin_code: str) -> str:
@@ -104,11 +152,14 @@ def extract_path_data(kotlin_code: str) -> str:
     return " ".join(path_commands)
 
 
-def convert_to_svg(path_data: str, width: int = 24, height: int = 24) -> str:
+def convert_to_svg(path_data: str, params: dict) -> str:
     svg = Element('svg', xmlns="http://www.w3.org/2000/svg",
-                  width=str(width), height=str(height),
-                  viewBox=f"0 0 {width} {height}")
-    SubElement(svg, 'path', d=path_data, fill="black")
+                  width=str(params["width"]), height=str(params["height"]),
+                  viewBox=f"0 0 {params['viewbox_w']} {params['viewbox_h']}")
+    path_attribs = {"d": path_data, "fill": params["fill"]}
+    if params["alpha"] is not None and params["alpha"] < 1:
+        path_attribs["fill-opacity"] = str(params["alpha"])
+    SubElement(svg, 'path', **path_attribs)
     return parseString(tostring(svg)).toprettyxml()
 
 
@@ -127,7 +178,8 @@ def process_directory(input_dir: str, output_dir: str):
                 print(f"⚠️ Пропущен пустой файл: {filename}")
                 continue
 
-            svg = convert_to_svg(path_data)
+            params = extract_vector_params(kotlin_code)
+            svg = convert_to_svg(path_data, params)
             output_file = os.path.join(output_dir, f"{os.path.splitext(filename)[0]}.svg")
             with open(output_file, "w", encoding="utf-8") as f:
                 f.write(svg)
