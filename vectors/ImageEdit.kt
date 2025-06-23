@@ -36,7 +36,7 @@ val Icons.Outlined.ImageEdit: ImageVector by lazy {
         path(
             fill = SolidColor(Color(0xFF000000)), stroke = null, strokeLineWidth = 0.0f,
             strokeLineCap = Butt, strokeLineJoin = Miter, strokeLineMiter = 4.0f,
-            pathFillType = NonZero, fillAlpha = 1f
+            pathFillType = NonZero
         ) {
             moveTo(11.0182f, 18.6079f)
             horizontalLineTo(5.393f)
