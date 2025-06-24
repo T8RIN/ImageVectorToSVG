@@ -87,6 +87,37 @@ class MainWindow(QMainWindow):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 kotlin_code = f.read()
+            named_blocks = converterScript.extract_named_vector_blocks(kotlin_code)
+            svg_paths = []
+            base_name = os.path.splitext(os.path.basename(file_path))[0]
+            if named_blocks:
+                for vector_name, vector_block in named_blocks:
+                    parts = vector_name.split('_', 1)
+                    style = parts[0]
+                    prefix = parts[1] if len(parts) > 1 else None
+                    vector_params = converterScript.extract_vector_params(vector_block)
+                    path_blocks = converterScript.extract_path_blocks(vector_block)
+                    paths = []
+                    for params_str, block in path_blocks:
+                        style_dict = converterScript.parse_path_params(params_str)
+                        # Для Outlined больше не трогаем fill/stroke — только оригинальные параметры
+                        path_data = converterScript.extract_path_data(block)
+                        if not path_data.strip():
+                            continue
+                        paths.append((path_data, style_dict))
+                    if not paths:
+                        continue
+                    svg_filename = f"{base_name}_{style}"
+                    if prefix and prefix.lower() != base_name.lower():
+                        svg_filename += f"_{prefix}"
+                    svg_filename += ".svg"
+                    svg_path = os.path.join(self.temp_dir, svg_filename)
+                    svg = converterScript.convert_to_svg(paths, vector_params)
+                    with open(svg_path, 'w', encoding='utf-8') as f:
+                        f.write(svg)
+                    svg_paths.append((svg_path, svg_filename))
+                return svg_paths if svg_paths else None
+            # Если только один ImageVector (старый режим)
             vector_params = converterScript.extract_vector_params(kotlin_code)
             path_blocks = converterScript.extract_path_blocks(kotlin_code)
             paths = []
@@ -100,25 +131,26 @@ class MainWindow(QMainWindow):
                 print(f"Файл {file_path} не содержит путей для SVG.")
                 return None
             svg = converterScript.convert_to_svg(paths, vector_params)
-            svg_filename = os.path.splitext(os.path.basename(file_path))[0] + '.svg'
+            svg_filename = base_name + '.svg'
             svg_path = os.path.join(self.temp_dir, svg_filename)
             with open(svg_path, 'w', encoding='utf-8') as f:
                 f.write(svg)
-            return svg_path
+            return [(svg_path, svg_filename)]
         except Exception as e:
             print(f"Ошибка при конвертации {file_path}: {e}")
             return None
 
     def on_files_dropped(self, files):
         for f in files:
-            svg_path = self.convert_file_to_svg(f)
-            if svg_path:
-                item = QListWidgetItem()
-                widget = SvgPreviewWidget(svg_path)
-                item.setSizeHint(widget.sizeHint())
-                self.list_widget.addItem(item)
-                self.list_widget.setItemWidget(item, widget)
-                self.svg_files.append((svg_path, os.path.basename(f)))
+            svg_paths = self.convert_file_to_svg(f)
+            if svg_paths:
+                for svg_path, svg_filename in svg_paths:
+                    item = QListWidgetItem()
+                    widget = SvgPreviewWidget(svg_path)
+                    item.setSizeHint(widget.sizeHint())
+                    self.list_widget.addItem(item)
+                    self.list_widget.setItemWidget(item, widget)
+                    self.svg_files.append((svg_path, svg_filename))
 
     def open_file_dialog(self):
         files, _ = QFileDialog.getOpenFileNames(self, 'Выберите файлы imageVector', '', 'Kotlin files (*.kt);;All files (*)')
