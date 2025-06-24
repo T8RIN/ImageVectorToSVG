@@ -381,7 +381,6 @@ def process_directory(input_dir: str, output_dir: str):
             with open(file_path, "r", encoding="utf-8") as f:
                 kotlin_code = f.read()
 
-            # Извлекаем все ImageVector-блоки (Rounded, Outlined, ...)
             named_blocks = extract_named_vector_blocks(kotlin_code)
             if not named_blocks:
                 # Фоллбэк: если не найдено, работаем как раньше
@@ -404,19 +403,15 @@ def process_directory(input_dir: str, output_dir: str):
                 print(f"✅ SVG создан: {output_file}")
                 continue
 
-            for vector_name, vector_block in named_blocks:
-                # Вытаскиваем параметры и path только из этого блока
+            base_name = os.path.splitext(filename)[0]
+            if len(named_blocks) == 1:
+                # Одна иконка — сохраняем как имя файла
+                vector_name, vector_block = named_blocks[0]
                 vector_params = extract_vector_params(vector_block)
                 path_blocks = extract_path_blocks(vector_block)
                 paths = []
                 for params_str, block in path_blocks:
                     style = parse_path_params(params_str)
-                    # Для Outlined: если нет stroke, делаем stroke чёрным, fill none
-                    if style and vector_name.lower().startswith("outlined"):
-                        if (not style["stroke"] or style["stroke"] == "none"):
-                            style["stroke"] = "#000000"
-                            style["stroke_width"] = 1
-                        style["fill"] = "none"
                     path_data = extract_path_data(block)
                     if not path_data.strip():
                         continue
@@ -425,10 +420,43 @@ def process_directory(input_dir: str, output_dir: str):
                     print(f"⚠️ Пропущен пустой блок: {vector_name} в {filename}")
                     continue
                 svg = convert_to_svg(paths, vector_params)
-                output_file = os.path.join(output_dir, f"{os.path.splitext(filename)[0]}_{vector_name}.svg")
+                output_file = os.path.join(output_dir, f"{base_name}.svg")
                 with open(output_file, "w", encoding="utf-8") as f:
                     f.write(svg)
                 print(f"✅ SVG создан: {output_file}")
+            else:
+                for vector_name, vector_block in named_blocks:
+                    # vector_name = style_name
+                    if '_' in vector_name:
+                        style, name = vector_name.split('_', 1)
+                    else:
+                        style, name = vector_name, ''
+                    vector_params = extract_vector_params(vector_block)
+                    path_blocks = extract_path_blocks(vector_block)
+                    paths = []
+                    for params_str, block in path_blocks:
+                        style_dict = parse_path_params(params_str)
+                        if style_dict and vector_name.lower().startswith("outlined"):
+                            if (not style_dict["stroke"] or style_dict["stroke"] == "none"):
+                                style_dict["stroke"] = "#000000"
+                                style_dict["stroke_width"] = 1
+                            style_dict["fill"] = "none"
+                        path_data = extract_path_data(block)
+                        if not path_data.strip():
+                            continue
+                        paths.append((path_data, style_dict))
+                    if not paths:
+                        print(f"⚠️ Пропущен пустой блок: {vector_name} в {filename}")
+                        continue
+                    svg = convert_to_svg(paths, vector_params)
+                    if style == base_name:
+                        svg_name = f"{base_name}_{name}.svg"
+                    else:
+                        svg_name = f"{base_name}_{style}_{name}.svg"
+                    output_file = os.path.join(output_dir, svg_name)
+                    with open(output_file, "w", encoding="utf-8") as f:
+                        f.write(svg)
+                    print(f"✅ SVG создан: {output_file}")
 
 
 def main():

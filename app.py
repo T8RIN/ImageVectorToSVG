@@ -271,32 +271,52 @@ class MainWindow(QMainWindow):
             svg_paths = []
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             if named_blocks:
-                for vector_name, vector_block in named_blocks:
-                    parts = vector_name.split('_', 1)
-                    style = parts[0]
-                    prefix = parts[1] if len(parts) > 1 else None
+                if len(named_blocks) == 1:
+                    # Только одна иконка — имя файла без суффикса
+                    svg_filename = base_name + '.svg'
+                    vector_name, vector_block = named_blocks[0]
                     vector_params = converterScript.extract_vector_params(vector_block)
                     path_blocks = converterScript.extract_path_blocks(vector_block)
                     paths = []
                     for params_str, block in path_blocks:
                         style_dict = converterScript.parse_path_params(params_str)
-                        # Для Outlined больше не трогаем fill/stroke — только оригинальные параметры
                         path_data = converterScript.extract_path_data(block)
                         if not path_data.strip():
                             continue
                         paths.append((path_data, style_dict))
                     if not paths:
-                        continue
-                    svg_filename = f"{base_name}_{style}"
-                    if prefix and prefix.lower() != base_name.lower():
-                        svg_filename += f"_{prefix}"
-                    svg_filename += ".svg"
+                        return None
                     svg_path = os.path.join(self.temp_dir, svg_filename)
                     svg = converterScript.convert_to_svg(paths, vector_params)
                     with open(svg_path, 'w', encoding='utf-8') as f:
                         f.write(svg)
-                    svg_paths.append((svg_path, svg_filename))
-                return svg_paths if svg_paths else None
+                    return [(svg_path, svg_filename)]
+                else:
+                    for vector_name, vector_block in named_blocks:
+                        parts = vector_name.split('_', 1)
+                        style = parts[0]
+                        prefix = parts[1] if len(parts) > 1 else None
+                        vector_params = converterScript.extract_vector_params(vector_block)
+                        path_blocks = converterScript.extract_path_blocks(vector_block)
+                        paths = []
+                        for params_str, block in path_blocks:
+                            style_dict = converterScript.parse_path_params(params_str)
+                            path_data = converterScript.extract_path_data(block)
+                            if not path_data.strip():
+                                continue
+                            paths.append((path_data, style_dict))
+                        if not paths:
+                            continue
+                        svg_filename = f"{base_name}_{style}"
+                        if prefix and prefix.lower() != base_name.lower():
+                            svg_filename += f"_{prefix}"
+                        svg_filename += ".svg"
+                        svg_path = os.path.join(self.temp_dir, svg_filename)
+                        svg = converterScript.convert_to_svg(paths, vector_params)
+                        with open(svg_path, 'w', encoding='utf-8') as f:
+                            f.write(svg)
+                        svg_paths.append((svg_path, svg_filename))
+                    return svg_paths if svg_paths else None
             # Если только один ImageVector (старый режим)
             vector_params = converterScript.extract_vector_params(kotlin_code)
             path_blocks = converterScript.extract_path_blocks(kotlin_code)
