@@ -7,8 +7,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtSvgWidgets import QSvgWidget
-from PyQt6.QtGui import QPainter, QColor, QBrush, QIcon, QClipboard, QFont
+from PyQt6.QtGui import QPainter, QColor, QBrush, QIcon, QClipboard, QFont, QSyntaxHighlighter, QTextCharFormat
 import converterScript
+import re
 
 
 class CheckerboardWidget(QWidget):
@@ -32,6 +33,31 @@ class CheckerboardWidget(QWidget):
                     painter.fillRect(x, y, size, size, color2)
         # SVG рисуется поверх
         self.svg_widget.renderer().render(painter)
+
+
+class SvgHighlighter(QSyntaxHighlighter):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.tag_format = QTextCharFormat()
+        self.tag_format.setForeground(QColor("#569CD6"))
+        self.tag_format.setFontWeight(QFont.Weight.Bold)
+
+        self.attr_format = QTextCharFormat()
+        self.attr_format.setForeground(QColor("#9CDCFE"))
+
+        self.value_format = QTextCharFormat()
+        self.value_format.setForeground(QColor("#CE9178"))
+
+    def highlightBlock(self, text):
+        # Теги
+        for match in re.finditer(r"</?\w+", text):
+            self.setFormat(match.start(), match.end() - match.start(), self.tag_format)
+        # Атрибуты
+        for match in re.finditer(r"\b\w+(?==)", text):
+            self.setFormat(match.start(), match.end() - match.start(), self.attr_format)
+        # Значения
+        for match in re.finditer(r'"[^"]*"', text):
+            self.setFormat(match.start(), match.end() - match.start(), self.value_format)
 
 
 class SvgPreviewWidget(QFrame):
@@ -106,6 +132,7 @@ class SvgPreviewWidget(QFrame):
         btn_row.addWidget(self.copy_btn)
         btn_row.addStretch(1)
         self.layout.addLayout(btn_row)
+        # --- Возвращаю QPlainTextEdit для SVG-кода ---
         self.code_edit = QPlainTextEdit()
         self.code_edit.setReadOnly(True)
         self.code_edit.setVisible(False)
@@ -114,6 +141,8 @@ class SvgPreviewWidget(QFrame):
         font = QFont('Fira Mono, Consolas, monospace')
         font.setPointSize(12)
         self.code_edit.setFont(font)
+        # Подключаем подсветку
+        self.highlighter = SvgHighlighter(self.code_edit.document())
         self.layout.addWidget(self.code_edit)
         self.setLayout(self.layout)
 
@@ -125,13 +154,22 @@ class SvgPreviewWidget(QFrame):
             self.code_edit.setVisible(True)
             self.copy_btn.setVisible(True)
             self.show_code_btn.setText('Скрыть код SVG')
+            # Высота по количеству строк (как раньше)
+            font_metrics = self.code_edit.fontMetrics()
+            line_count = svg_code.count('\n') + 1
+            line_height = font_metrics.lineSpacing()
+            max_lines = 30
+            min_lines = 6
+            visible_lines = max(min(line_count, max_lines), min_lines)
+            padding = 24
+            self.code_edit.setFixedHeight(visible_lines * line_height + padding)
+            self.code_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             self.expanded = True
         else:
             self.code_edit.setVisible(False)
             self.copy_btn.setVisible(False)
             self.show_code_btn.setText('Показать код SVG')
             self.expanded = False
-
         self.update_list_item_size()
 
     def copy_code(self):
