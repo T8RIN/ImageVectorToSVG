@@ -9,7 +9,7 @@ from PyQt6.QtGui import QPalette
 from PyQt6.QtSvgWidgets import QSvgWidget
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QListWidget, QPushButton, QFileDialog, QLabel, QListWidgetItem,
-    QHBoxLayout, QTextEdit, QFrame, QMessageBox
+    QHBoxLayout, QTextEdit, QFrame, QMessageBox, QProgressDialog, QMenu
 )
 
 import converterScript
@@ -228,30 +228,74 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
 
-        self.info_label = QLabel('Перетащите файлы imageVector в любое место окна или используйте кнопку ниже', self)
+        self.info_label = QLabel('Перетащите или вставьте файлы imageVector сюда\nили используйте кнопки ниже', self)
         self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.info_label.setStyleSheet('''
+            QLabel {
+                color: #aaa;
+                font-size: 18px;
+                font-weight: 500;
+                padding: 40px 0 40px 0;
+                border: 2px dashed #444;
+                border-radius: 16px;
+                background: #191a1c;
+            }
+        ''')
         self.layout.addWidget(self.info_label)
 
         self.list_widget = QListWidget()
         self.list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         self.list_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.layout.addWidget(self.list_widget)
+        self.list_widget.setVisible(False)
 
         btn_layout = QHBoxLayout()
-        self.add_button = QPushButton('Добавить файл(ы)')
-        self.add_button.clicked.connect(self.open_file_dialog)
+        self.add_button = QPushButton('Добавить')
+        self.add_button.setIcon(QIcon.fromTheme('folder'))
+        add_menu = QMenu(self)
+        action_files = add_menu.addAction(QIcon.fromTheme('document-open'), 'Добавить файл(ы)')
+        action_folder = add_menu.addAction(QIcon.fromTheme('folder'), 'Добавить папку')
+        self.add_button.setMenu(add_menu)
+        action_files.triggered.connect(self.open_file_dialog)
+        action_folder.triggered.connect(self.open_folder_dialog)
         btn_layout.addWidget(self.add_button)
-        self.save_button = QPushButton('Сохранить все SVG в папку...')
+        self.save_button = QPushButton('Сохранить')
+        self.save_button.setIcon(QIcon.fromTheme('document-save'))
         self.save_button.clicked.connect(self.save_all_svgs)
         btn_layout.addWidget(self.save_button)
+        self.clear_button = QPushButton('Очистить список')
+        self.clear_button.setIcon(QIcon.fromTheme('user-trash'))
+        self.clear_button.clicked.connect(self.clear_svg_list)
+        btn_layout.addWidget(self.clear_button)
         self.layout.addLayout(btn_layout)
 
         self.svg_files = []  # (svg_path, orig_filename)
         self.temp_dir = tempfile.mkdtemp()
+        self.clear_temp_dir()
 
         # Включаем drag-and-drop на всё окно
         self.setAcceptDrops(True)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.update_info_label()
+
+    def clear_temp_dir(self):
+        for f in os.listdir(self.temp_dir):
+            try:
+                os.remove(os.path.join(self.temp_dir, f))
+            except Exception:
+                pass
+
+    def update_info_label(self):
+        is_empty = self.list_widget.count() == 0
+        self.info_label.setVisible(is_empty)
+        self.list_widget.setVisible(not is_empty)
+        self.clear_button.setVisible(not is_empty)
+        self.save_button.setVisible(not is_empty)
+
+    def clear_svg_list(self):
+        self.list_widget.clear()
+        self.svg_files.clear()
+        self.update_info_label()
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -341,8 +385,46 @@ class MainWindow(QMainWindow):
             return None
 
     def on_files_dropped(self, files):
-        idx = self.list_widget.count()
+        # Фильтруем папки и файлы
+        all_files = []
         for f in files:
+            if os.path.isdir(f):
+                for root, _, filenames in os.walk(f):
+                    for name in filenames:
+                        if name.endswith('.kt'):
+                            all_files.append(os.path.join(root, name))
+            else:
+                all_files.append(f)
+        self.convert_files_with_progress(all_files)
+
+    def open_file_dialog(self):
+        files, _ = QFileDialog.getOpenFileNames(self, 'Выберите файлы imageVector', '',
+                                                'Kotlin files (*.kt);;All files (*)')
+        if files:
+            self.on_files_dropped(files)
+
+    def open_folder_dialog(self):
+        folder = QFileDialog.getExistingDirectory(self, 'Выберите папку с .kt файлами')
+        if folder:
+            all_files = []
+            for root, _, filenames in os.walk(folder):
+                for name in filenames:
+                    if name.endswith('.kt'):
+                        all_files.append(os.path.join(root, name))
+            self.convert_files_with_progress(all_files)
+
+    def convert_files_with_progress(self, files):
+        if not files:
+            return
+        progress = QProgressDialog('Конвертация файлов...', 'Отмена', 0, len(files), self)
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        idx = self.list_widget.count()
+        for i, f in enumerate(files):
+            progress.setValue(i)
+            if progress.wasCanceled():
+                break
             svg_paths = self.convert_file_to_svg(f)
             if svg_paths:
                 for svg_path, svg_filename in svg_paths:
@@ -353,12 +435,8 @@ class MainWindow(QMainWindow):
                     self.list_widget.setItemWidget(item, widget)
                     self.svg_files.append((svg_path, svg_filename))
                     idx += 1
-
-    def open_file_dialog(self):
-        files, _ = QFileDialog.getOpenFileNames(self, 'Выберите файлы imageVector', '',
-                                                'Kotlin files (*.kt);;All files (*)')
-        if files:
-            self.on_files_dropped(files)
+        progress.setValue(len(files))
+        self.update_info_label()
 
     def save_all_svgs(self):
         folder = QFileDialog.getExistingDirectory(self, 'Выберите папку для сохранения SVG')
