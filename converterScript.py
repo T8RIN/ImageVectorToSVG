@@ -347,19 +347,26 @@ def convert_to_svg(paths, params):
 def extract_named_vector_blocks(kotlin_code: str):
     """Возвращает список кортежей (vector_name, vector_block) для каждого ImageVector в файле."""
     results = []
-    pattern = re.compile(r'val\s+Icons\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*ImageVector\s*by\s*lazy\s*\{', re.DOTALL)
-    for match in pattern.finditer(kotlin_code):
+    pattern = re.compile(r'val\s+Icons\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*ImageVector\s*by\s*lazy[^\{]*\{', re.DOTALL)
+    matches = list(pattern.finditer(kotlin_code))
+    for idx, match in enumerate(matches):
         style, name = match.group(1), match.group(2)
         start = match.end()
+        # Найти конец блока: либо начало следующего val Icons..., либо конец файла
+        end = len(kotlin_code)
+        if idx + 1 < len(matches):
+            end = matches[idx + 1].start()
+        # Теперь ищем закрывающую скобку только в этом диапазоне
+        block_code = kotlin_code[start:end]
         brace_level = 1
-        i = start
-        while i < len(kotlin_code) and brace_level > 0:
-            if kotlin_code[i] == '{':
+        i = 0
+        while i < len(block_code) and brace_level > 0:
+            if block_code[i] == '{':
                 brace_level += 1
-            elif kotlin_code[i] == '}':
+            elif block_code[i] == '}':
                 brace_level -= 1
             i += 1
-        block = kotlin_code[start:i-1]
+        block = block_code[:i-1]
         results.append((f"{style}_{name}", block))
     return results
 
