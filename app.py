@@ -1,15 +1,18 @@
-import sys
 import os
+import re
+import sys
 import tempfile
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QPainter, QColor, QIcon, QFont, QSyntaxHighlighter, QTextCharFormat
+from PyQt6.QtGui import QPalette
+from PyQt6.QtSvgWidgets import QSvgWidget
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QListWidget, QPushButton, QFileDialog, QLabel, QListWidgetItem,
-    QHBoxLayout, QTextEdit, QSpacerItem, QSizePolicy, QFrame, QPlainTextEdit, QMessageBox, QGraphicsDropShadowEffect
+    QHBoxLayout, QTextEdit, QFrame, QMessageBox
 )
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtSvgWidgets import QSvgWidget
-from PyQt6.QtGui import QPainter, QColor, QBrush, QIcon, QClipboard, QFont, QSyntaxHighlighter, QTextCharFormat
+
 import converterScript
-import re
 
 
 class CheckerboardWidget(QWidget):
@@ -132,15 +135,8 @@ class SvgPreviewWidget(QFrame):
         btn_row.addWidget(self.copy_btn)
         btn_row.addStretch(1)
         self.layout.addLayout(btn_row)
-        # --- Возвращаю QPlainTextEdit для SVG-кода ---
-        self.code_edit = QPlainTextEdit()
-        self.code_edit.setReadOnly(True)
+        self.code_edit = Editor()
         self.code_edit.setVisible(False)
-        self.code_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.code_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        font = QFont('Fira Mono, Consolas, monospace')
-        font.setPointSize(12)
-        self.code_edit.setFont(font)
         # Подключаем подсветку
         self.highlighter = SvgHighlighter(self.code_edit.document())
         self.layout.addWidget(self.code_edit)
@@ -154,16 +150,6 @@ class SvgPreviewWidget(QFrame):
             self.code_edit.setVisible(True)
             self.copy_btn.setVisible(True)
             self.show_code_btn.setText('Скрыть код SVG')
-            # Высота по количеству строк (как раньше)
-            font_metrics = self.code_edit.fontMetrics()
-            line_count = svg_code.count('\n') + 1
-            line_height = font_metrics.lineSpacing()
-            max_lines = 30
-            min_lines = 6
-            visible_lines = max(min(line_count, max_lines), min_lines)
-            padding = 24
-            self.code_edit.setFixedHeight(visible_lines * line_height + padding)
-            self.code_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             self.expanded = True
         else:
             self.code_edit.setVisible(False)
@@ -187,6 +173,50 @@ class SvgPreviewWidget(QFrame):
                 if list_widget.itemWidget(item) is self:
                     item.setSizeHint(self.sizeHint())
                     break
+
+
+class Editor(QTextEdit):
+    def __init__(self):
+        super().__init__()
+        self.setReadOnly(True)
+
+        # Шрифт
+        font = QFont("Fira Mono, Consolas, monospace")
+        font.setPointSize(12)
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        self.setFont(font)
+
+        # Цветовая палитра
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Base, QColor("#1e1e1e"))  # Фон
+        palette.setColor(QPalette.ColorRole.Text, QColor("#d4d4d4"))  # Текст
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#264f78"))  # Выделение
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))  # Выделенный текст
+        self.setPalette(palette)
+
+        # Стиль через CSS
+        self.setStyleSheet("""
+            QTextEdit {
+                border: 1px solid #3c3c3c;
+                border-radius: 6px;
+                padding: 6px;
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: 'Fira Mono', 'Consolas', monospace;
+            }
+        """)
+
+        self.textChanged.connect(self.autoResize)
+
+    def autoResize(self):
+        self.document().setTextWidth(self.viewport().width())
+        margins = self.contentsMargins()
+        height = int(self.document().size().height() + margins.top() + margins.bottom())
+        self.setFixedHeight(height)
+
+    def resizeEvent(self, event):
+        self.autoResize()
+        super().resizeEvent(event)
 
 
 class MainWindow(QMainWindow):
