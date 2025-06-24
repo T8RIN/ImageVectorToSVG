@@ -2,12 +2,14 @@ import sys
 import os
 import tempfile
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QListWidget, QPushButton, QFileDialog, QLabel, QListWidgetItem, QHBoxLayout
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QListWidget, QPushButton, QFileDialog, QLabel, QListWidgetItem,
+    QHBoxLayout, QTextEdit, QSpacerItem, QSizePolicy, QFrame, QPlainTextEdit, QMessageBox, QGraphicsDropShadowEffect
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtSvgWidgets import QSvgWidget
-from PyQt6.QtGui import QPainter, QColor, QBrush
+from PyQt6.QtGui import QPainter, QColor, QBrush, QIcon, QClipboard, QFont
 import converterScript
+
 
 class CheckerboardWidget(QWidget):
     def __init__(self, svg_path, parent=None):
@@ -31,16 +33,123 @@ class CheckerboardWidget(QWidget):
         # SVG рисуется поверх
         self.svg_widget.renderer().render(painter)
 
-class SvgPreviewWidget(QWidget):
-    def __init__(self, svg_path, parent=None):
+
+class SvgPreviewWidget(QFrame):
+    def __init__(self, svg_path, index=0, parent=None):
         super().__init__(parent)
-        layout = QVBoxLayout(self)
+        self.svg_path = svg_path
+        self.expanded = False
+        self.index = index
+        even_bg = '#242426'
+        odd_bg = '#1c1e1f'
+        bg = even_bg if index % 2 == 0 else odd_bg
+        css = (
+            "QFrame {"
+            f"background: {bg};"
+            "}"
+            "QLabel[role=\"filename\"] {"
+            "background: #22262c;"
+            "color: #fff;"
+            "border-radius: 8px;"
+            "padding: 2px 12px;"
+            "font-size: 13px;"
+            "font-weight: 500;"
+            "margin-top: 6px;"
+            "margin-bottom: 6px;"
+            "qproperty-alignment: AlignCenter;"
+            "}"
+            "QPushButton {"
+            "background: #23272e;"
+            "color: #fff;"
+            "border-radius: 6px;"
+            "padding: 2px 10px;"
+            "font-size: 12px;"
+            "min-width: 80px;"
+            "margin-left: 6px;"
+            "}"
+            "QPushButton:hover {"
+            "background: #2a2d32;"
+            "}"
+            "QPlainTextEdit {"
+            "background: #23272e;"
+            "color: #e0e0e0;"
+            "font-family: 'Fira Mono', 'Consolas', monospace;"
+            "font-size: 12px;"
+            "border-radius: 8px;"
+            "border: 1px solid #333;"
+            "margin-top: 8px;"
+            "margin-bottom: 8px;"
+            "padding: 6px;"
+            "}"
+        )
+        self.setStyleSheet(css)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(18, 14, 18, 14)
+        self.layout.setSpacing(8)
         self.checkerboard = CheckerboardWidget(svg_path)
-        layout.addWidget(self.checkerboard)
+        self.layout.addWidget(self.checkerboard, alignment=Qt.AlignmentFlag.AlignHCenter)
         self.label = QLabel(os.path.basename(svg_path))
-        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.label)
-        self.setLayout(layout)
+        self.label.setProperty("role", "filename")
+        self.layout.addWidget(self.label, alignment=Qt.AlignmentFlag.AlignHCenter)
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(6)
+        self.show_code_btn = QPushButton()
+        self.show_code_btn.setText('Показать код SVG')
+        self.show_code_btn.setIcon(QIcon.fromTheme('document-preview'))
+        self.show_code_btn.clicked.connect(self.toggle_code)
+        btn_row.addWidget(self.show_code_btn)
+        self.copy_btn = QPushButton()
+        self.copy_btn.setText('Скопировать')
+        self.copy_btn.setIcon(QIcon.fromTheme('edit-copy'))
+        self.copy_btn.clicked.connect(self.copy_code)
+        self.copy_btn.setVisible(False)
+        btn_row.addWidget(self.copy_btn)
+        btn_row.addStretch(1)
+        self.layout.addLayout(btn_row)
+        self.code_edit = QPlainTextEdit()
+        self.code_edit.setReadOnly(True)
+        self.code_edit.setVisible(False)
+        self.code_edit.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.code_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        font = QFont('Fira Mono, Consolas, monospace')
+        font.setPointSize(12)
+        self.code_edit.setFont(font)
+        self.layout.addWidget(self.code_edit)
+        self.setLayout(self.layout)
+
+    def toggle_code(self):
+        if not self.expanded:
+            with open(self.svg_path, 'r', encoding='utf-8') as f:
+                svg_code = f.read()
+            self.code_edit.setPlainText(svg_code)
+            self.code_edit.setVisible(True)
+            self.copy_btn.setVisible(True)
+            self.show_code_btn.setText('Скрыть код SVG')
+            self.expanded = True
+        else:
+            self.code_edit.setVisible(False)
+            self.copy_btn.setVisible(False)
+            self.show_code_btn.setText('Показать код SVG')
+            self.expanded = False
+
+        self.update_list_item_size()
+
+    def copy_code(self):
+        clipboard = QApplication.instance().clipboard()
+        clipboard.setText(self.code_edit.toPlainText())
+
+    def update_list_item_size(self):
+        parent = self.parent()
+        while parent and not isinstance(parent, QListWidget):
+            parent = parent.parent()
+        if isinstance(parent, QListWidget):
+            list_widget = parent
+            for i in range(list_widget.count()):
+                item = list_widget.item(i)
+                if list_widget.itemWidget(item) is self:
+                    item.setSizeHint(self.sizeHint())
+                    break
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -56,6 +165,8 @@ class MainWindow(QMainWindow):
         self.layout.addWidget(self.info_label)
 
         self.list_widget = QListWidget()
+        self.list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.list_widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.layout.addWidget(self.list_widget)
 
         btn_layout = QHBoxLayout()
@@ -72,6 +183,7 @@ class MainWindow(QMainWindow):
 
         # Включаем drag-and-drop на всё окно
         self.setAcceptDrops(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -141,19 +253,22 @@ class MainWindow(QMainWindow):
             return None
 
     def on_files_dropped(self, files):
+        idx = self.list_widget.count()
         for f in files:
             svg_paths = self.convert_file_to_svg(f)
             if svg_paths:
                 for svg_path, svg_filename in svg_paths:
                     item = QListWidgetItem()
-                    widget = SvgPreviewWidget(svg_path)
+                    widget = SvgPreviewWidget(svg_path, idx)
                     item.setSizeHint(widget.sizeHint())
                     self.list_widget.addItem(item)
                     self.list_widget.setItemWidget(item, widget)
                     self.svg_files.append((svg_path, svg_filename))
+                    idx += 1
 
     def open_file_dialog(self):
-        files, _ = QFileDialog.getOpenFileNames(self, 'Выберите файлы imageVector', '', 'Kotlin files (*.kt);;All files (*)')
+        files, _ = QFileDialog.getOpenFileNames(self, 'Выберите файлы imageVector', '',
+                                                'Kotlin files (*.kt);;All files (*)')
         if files:
             self.on_files_dropped(files)
 
@@ -165,6 +280,28 @@ class MainWindow(QMainWindow):
                 with open(svg_path, 'r', encoding='utf-8') as src, open(dest_path, 'w', encoding='utf-8') as dst:
                     dst.write(src.read())
 
+    def keyPressEvent(self, event):
+        # Поддержка Ctrl+V (Cmd+V) для вставки файлов
+        ctrl = event.modifiers() & Qt.KeyboardModifier.ControlModifier
+        cmd = event.modifiers() & Qt.KeyboardModifier.MetaModifier
+        if (ctrl or cmd) and event.key() == Qt.Key.Key_V:
+            clipboard = QApplication.instance().clipboard()
+            mime = clipboard.mimeData()
+            files = []
+            if mime.hasUrls():
+                files = [url.toLocalFile() for url in mime.urls() if url.isLocalFile()]
+            elif mime.hasText():
+                # Иногда путь к файлу просто как текст
+                text = mime.text().strip()
+                if os.path.isfile(text):
+                    files = [text]
+            if files:
+                self.on_files_dropped(files)
+            else:
+                QMessageBox.information(self, 'Вставка файлов', 'В буфере обмена нет файлов для вставки.')
+        else:
+            super().keyPressEvent(event)
+
 
 def main():
     app = QApplication(sys.argv)
@@ -172,5 +309,6 @@ def main():
     window.show()
     sys.exit(app.exec())
 
+
 if __name__ == '__main__':
-    main() 
+    main()
