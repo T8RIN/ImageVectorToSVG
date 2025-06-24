@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24.0" height="24.0" viewBox="0 0 24.0 24.0">
+	<path d="M 14.4125 5.5875 C 14.0208 5.1959, 13.55 5.0, 13.0 5.0 H 3.0 C 2.45 5.0, 1.9792 5.1959, 1.5875 5.5875 S 1.0 6.45, 1.0 7.0 v 10.0 c 0.0 0.55, 0.1959 1.0208, 0.5875 1.4125 S 2.45 19.0, 3.0 19.0 h 10.0 c 0.55 0.0, 1.0208 -0.1959, 1.4125 -0.5875 S 15.0 17.55, 15.0 17.0 V 7.0 C 15.0 6.45, 14.8041 5.9792, 14.4125 5.5875 Z M 13.0 17.0 H 3.0 V 7.0 h 10.0 V 17.0 Z" fill="#000000" stroke="none" stroke-width="0.0" stroke-linecap="butt" stroke-linejoin="miter" fill-rule="nonzero"/>
+	<path d="M 4.0 15.0 l 8.0 0.0 l -2.6 -3.5 l -1.9 2.5 l -1.4 -1.85 Z" fill="#000000" stroke="none" stroke-width="0.0" stroke-linecap="butt" stroke-linejoin="miter" fill-rule="nonzero"/>
+	<path d="M 3.0 17.0 v -10.0 V 17.0 Z" fill="#000000" stroke="none" stroke-width="0.0" stroke-linecap="butt" stroke-linejoin="miter" fill-rule="nonzero"/>
+	<path d="M 17.0 5.1755 h 6.0 v 3.0 h -6.0 Z" fill="#000000" stroke="none" stroke-width="0.0" stroke-linecap="butt" stroke-linejoin="miter" fill-rule="nonzero"/>
+	<path d="M 17.0 15.8245 h 6.0 v 3.0 h -6.0 Z" fill="#000000" stroke="none" stroke-width="0.0" stroke-linecap="butt" stroke-linejoin="miter" fill-rule="nonzero"/>
+	<path d="M 16.8404 10.5 h 6.0 v 3.0 h -6.0 Z" fill="#000000" stroke="none" stroke-width="0.0" stroke-linecap="butt" stroke-linejoin="miter" fill-rule="nonzero"/>
+</svg>
