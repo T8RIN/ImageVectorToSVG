@@ -579,6 +579,14 @@ class MainWindow(QMainWindow):
         else:
             super().keyPressEvent(event)
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            widget = self.list_widget.itemWidget(item)
+            if widget and hasattr(widget, 'update_list_item_size'):
+                widget.update_list_item_size()
+
 
 def main():
     app = QApplication(sys.argv)
