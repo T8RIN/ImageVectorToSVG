@@ -42,34 +42,44 @@ def clean_arg(arg):
 
 def extract_path_blocks(kotlin_code: str):
     """Возвращает список кортежей (params_str, path_body) для каждого path-блока."""
-    lines = kotlin_code.splitlines()
     blocks = []
     i = 0
+    lines = kotlin_code.splitlines()
     n = len(lines)
     while i < n:
         line = lines[i]
         if 'path(' in line:
             # Собираем параметры path(...)
-            params_lines = []
-            while not ('{' in line):
-                params_lines.append(line)
+            params = []
+            while '{' not in line:
+                params.append(line)
                 i += 1
+                if i >= n:
+                    break
                 line = lines[i]
-            params_lines.append(line.split('{', 1)[0])
-            params_str = '\n'.join(params_lines)
-            # Теперь собираем тело path {...}
-            block_lines = []
-            brace_level = line.count('{') - line.count('}')
-            block_lines.append(line.split('{', 1)[1])
+            if i >= n:
+                break
+            params.append(line.split('{', 1)[0])
+            params_str = '\n'.join(params)
+            # Собираем тело path {...} с учётом вложенных скобок
+            block = []
+            after_brace = line.split('{', 1)[1]
+            block.append(after_brace)
             i += 1
+            brace_level = 1
             while i < n and brace_level > 0:
                 l = lines[i]
-                brace_level += l.count('{') - l.count('}')
-                block_lines.append(l)
+                brace_level += l.count('{')
+                brace_level -= l.count('}')
+                block.append(l)
                 i += 1
-            blocks.append((params_str, '\n'.join(block_lines)))
+            # Удаляем последнюю строку после закрывающей скобки
+            if brace_level < 0 and block:
+                block = block[:-1]
+            blocks.append((params_str, '\n'.join(block).rsplit('}', 1)[0].strip()))
         else:
             i += 1
+    # print(f'Найдено path-блоков: {len(blocks)}')
     return blocks
 
 
@@ -140,9 +150,11 @@ def parse_path_params(params_str):
             fill_rule = 'evenodd'
         else:
             fill_rule = 'nonzero'
-    # Если fill и stroke оба отсутствуют — path не добавлять
-    if (fill is None or fill == 'none') and (stroke is None or stroke == 'none'):
-        return None
+    # Если fill и stroke оба отсутствуют — теперь возвращаем значения по умолчанию
+    if fill is None:
+        fill = 'none'
+    if stroke is None:
+        stroke = 'none'
     # Если stroke есть, но stroke-width не задан — по умолчанию 1
     if stroke and stroke != 'none' and stroke_width is None:
         stroke_width = 1
@@ -334,9 +346,22 @@ def convert_to_svg(paths, params):
 
 def extract_named_vector_blocks(kotlin_code: str):
     """Возвращает список кортежей (vector_name, vector_block) для каждого ImageVector в файле."""
-    # Поиск всех val Icons.<Style>.<Name>: ImageVector by lazy { ... }
-    pattern = re.compile(r'val\s+Icons\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*ImageVector\s*by\s*lazy\s*\{(.*?)\n\s*\}', re.DOTALL)
-    return [(f"{style}_{name}", block) for style, name, block in pattern.findall(kotlin_code)]
+    results = []
+    pattern = re.compile(r'val\s+Icons\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+):\s*ImageVector\s*by\s*lazy\s*\{', re.DOTALL)
+    for match in pattern.finditer(kotlin_code):
+        style, name = match.group(1), match.group(2)
+        start = match.end()
+        brace_level = 1
+        i = start
+        while i < len(kotlin_code) and brace_level > 0:
+            if kotlin_code[i] == '{':
+                brace_level += 1
+            elif kotlin_code[i] == '}':
+                brace_level -= 1
+            i += 1
+        block = kotlin_code[start:i-1]
+        results.append((f"{style}_{name}", block))
+    return results
 
 
 def process_directory(input_dir: str, output_dir: str):
