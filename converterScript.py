@@ -20,8 +20,18 @@ COMMAND_MAP = {
     "quadToRelative": lambda args: f"q {args[0]} {args[1]}, {args[2]} {args[3]}",
     "reflectiveQuadTo": lambda args: f"T {args[0]} {args[1]}",
     "reflectiveQuadToRelative": lambda args: f"t {args[0]} {args[1]}",
-    "arcTo": lambda args: f"A {args[0]} {args[1]} {args[2]} {args[3]} {args[4]} {args[5]} {args[6]}",
-    "arcToRelative": lambda args: f"a {args[0]} {args[1]} {args[2]} {args[3]} {args[4]} {args[5]} {args[6]}",
+    "arcTo": lambda args: (
+        f"A {args[0]} {args[1]} 0 "
+        f"{'1' if args[3].lower() == 'true' else '0'} "
+        f"{'1' if args[4].lower() == 'true' else '0'} "
+        f"{args[5]} {args[6]}"
+    ),
+    "arcToRelative": lambda args: (
+        f"a {args[0]} {args[1]} 0 "
+        f"{'1' if args[3].lower() == 'true' else '0'} "
+        f"{'1' if args[4].lower() == 'true' else '0'} "
+        f"{args[5]} {args[6]}"
+    ),
     "close": lambda args: "Z"
 }
 
@@ -173,9 +183,86 @@ def extract_vector_params(kotlin_code: str):
     }
 
 
+def parse_args_any(arg_str, expected_names, synonyms=None):
+    arg_str = arg_str.replace('\n', ' ').replace('\r', ' ')
+    arg_str = re.sub(r'\s+', ' ', arg_str)
+    parts = []
+    depth = 0
+    current = ''
+    for c in arg_str:
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            depth -= 1
+        if c == ',' and depth == 0:
+            parts.append(current.strip())
+            current = ''
+        else:
+            current += c
+    if current.strip():
+        parts.append(current.strip())
+    args = {}
+    for part in parts:
+        if '=' in part:
+            k, v = part.split('=', 1)
+            args[k.strip()] = v.strip().strip('"')
+        else:
+            args[len(args)] = part.strip().strip('"')
+    if synonyms:
+        for syn, main in synonyms.items():
+            if syn in args and main not in args:
+                args[main] = args[syn]
+    result = []
+    for i, name in enumerate(expected_names):
+        if name in args:
+            result.append(args[name])
+        elif i in args:
+            result.append(args[i])
+        else:
+            result.append('0')  # Подставляем 0 вместо ''
+    return result
+
+
+def clean_svg_path(path_str):
+    # Удаляем суффикс 'f' у чисел (например, 12.0f -> 12.0)
+    path_str = re.sub(r'(\d+\.?\d*)f', r'\1', path_str)
+    # Заменяем все запятые на пробелы (SVG не любит запятые между числами)
+    path_str = path_str.replace(',', ' ')
+    # Удаляем лишние пробелы
+    path_str = re.sub(r'\s+', ' ', path_str)
+    return path_str.strip()
+
+
 def extract_path_data(block):
     path_commands = []
     valid_commands = set(COMMAND_MAP.keys())
+    expected_args = {
+        "moveTo": ["x", "y"],
+        "moveToRelative": ["dx", "dy"],
+        "lineTo": ["x", "y"],
+        "lineToRelative": ["dx", "dy"],
+        "horizontalLineTo": ["x"],
+        "horizontalLineToRelative": ["dx"],
+        "verticalLineTo": ["y"],
+        "verticalLineToRelative": ["dy"],
+        "curveTo": ["x1", "y1", "x2", "y2", "x3", "y3"],
+        "curveToRelative": ["dx1", "dy1", "dx2", "dy2", "dx3", "dy3"],
+        "reflectiveCurveTo": ["x2", "y2", "x3", "y3"],
+        "reflectiveCurveToRelative": ["dx2", "dy2", "dx3", "dy3"],
+        "quadTo": ["x1", "y1", "x2", "y2"],
+        "quadToRelative": ["dx1", "dy1", "dx2", "dy2"],
+        "reflectiveQuadTo": ["x", "y"],
+        "reflectiveQuadToRelative": ["dx", "dy"],
+        "arcTo": ["rx", "ry", "angle", "isMoreThanHalf", "isPositiveArc", "x1", "y1"],
+        "arcToRelative": ["rx", "ry", "angle", "isMoreThanHalf", "isPositiveArc", "dx1", "dy1"],
+        "close": []
+    }
+    arc_synonyms = {
+        "a": "rx", "b": "ry", "theta": "angle",
+        "horizontalEllipseRadius": "rx", "verticalEllipseRadius": "ry",
+        "horizontalEllipsisRadius": "rx", "verticalEllipsisRadius": "ry",
+        "dx1": "x1", "dy1": "y1", "dx": "dx1", "dy": "dy1"
+    }
     def find_commands(block):
         i = 0
         n = len(block)
@@ -193,14 +280,18 @@ def extract_path_data(block):
                 arg_start = i
                 depth = 1
                 while i < n and depth > 0:
-                    if block[i] == '(':
-                        depth += 1
-                    elif block[i] == ')':
-                        depth -= 1
+                    if block[i] == '(': depth += 1
+                    elif block[i] == ')': depth -= 1
                     i += 1
                 arg_str = block[arg_start:i - 1]
                 if name in valid_commands:
-                    args = [clean_arg(a) for a in arg_str.split(',') if a.strip()]
+                    if name in expected_args:
+                        synonyms = arc_synonyms if name in ["arcTo", "arcToRelative"] else None
+                        args = parse_args_any(arg_str, expected_args[name], synonyms)
+                        print(f"[SVG] {name}({', '.join(args)})")
+                    else:
+                        args = [clean_arg(a) for a in arg_str.split(',') if a.strip()]
+                        print(f"[SVG] {name}({', '.join(args)})")
                     try:
                         svg_cmd = COMMAND_MAP[name](args)
                         path_commands.append(svg_cmd)
@@ -209,7 +300,8 @@ def extract_path_data(block):
             else:
                 i += 1
     find_commands(block)
-    return " ".join(path_commands)
+    raw_path = " ".join(path_commands)
+    return clean_svg_path(raw_path)
 
 
 def convert_to_svg(paths, params):
