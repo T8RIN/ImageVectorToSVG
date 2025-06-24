@@ -3,6 +3,8 @@ import re
 import sys
 import tempfile
 
+import converterCLI as CLI
+
 from PyQt6.QtCore import QSize
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QPalette, QColor, QIcon
@@ -17,8 +19,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtWidgets import (
     QWidget, QTextEdit, QPushButton, QVBoxLayout, QHBoxLayout, QFrame
 )
-
-import converterScript
 
 
 class CheckerboardWidget(QWidget):
@@ -334,6 +334,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('ImageVector to SVG Converter')
+        self.setWindowIcon(QIcon('icon.png'))
         self.resize(700, 500)
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -422,7 +423,7 @@ class MainWindow(QMainWindow):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 kotlin_code = f.read()
-            named_blocks = converterScript.extract_named_vector_blocks(kotlin_code)
+            named_blocks = CLI.extract_named_vector_blocks(kotlin_code)
             svg_paths = []
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             if named_blocks:
@@ -430,19 +431,19 @@ class MainWindow(QMainWindow):
                     # Только одна иконка — имя файла без суффикса
                     svg_filename = base_name + '.svg'
                     vector_name, vector_block = named_blocks[0]
-                    vector_params = converterScript.extract_vector_params(vector_block)
-                    path_blocks = converterScript.extract_path_blocks(vector_block)
+                    vector_params = CLI.extract_vector_params(vector_block)
+                    path_blocks = CLI.extract_path_blocks(vector_block)
                     paths = []
                     for params_str, block in path_blocks:
-                        style_dict = converterScript.parse_path_params(params_str)
-                        path_data = converterScript.extract_path_data(block)
+                        style_dict = CLI.parse_path_params(params_str)
+                        path_data = CLI.extract_path_data(block)
                         if not path_data.strip():
                             continue
                         paths.append((path_data, style_dict))
                     if not paths:
                         return None
                     svg_path = os.path.join(self.temp_dir, svg_filename)
-                    svg = converterScript.convert_to_svg(paths, vector_params)
+                    svg = CLI.convert_to_svg(paths, vector_params)
                     with open(svg_path, 'w', encoding='utf-8') as f:
                         f.write(svg)
                     return [(svg_path, svg_filename)]
@@ -451,12 +452,12 @@ class MainWindow(QMainWindow):
                         parts = vector_name.split('_', 1)
                         style = parts[0]
                         prefix = parts[1] if len(parts) > 1 else None
-                        vector_params = converterScript.extract_vector_params(vector_block)
-                        path_blocks = converterScript.extract_path_blocks(vector_block)
+                        vector_params = CLI.extract_vector_params(vector_block)
+                        path_blocks = CLI.extract_path_blocks(vector_block)
                         paths = []
                         for params_str, block in path_blocks:
-                            style_dict = converterScript.parse_path_params(params_str)
-                            path_data = converterScript.extract_path_data(block)
+                            style_dict = CLI.parse_path_params(params_str)
+                            path_data = CLI.extract_path_data(block)
                             if not path_data.strip():
                                 continue
                             paths.append((path_data, style_dict))
@@ -467,25 +468,25 @@ class MainWindow(QMainWindow):
                             svg_filename += f"_{prefix}"
                         svg_filename += ".svg"
                         svg_path = os.path.join(self.temp_dir, svg_filename)
-                        svg = converterScript.convert_to_svg(paths, vector_params)
+                        svg = CLI.convert_to_svg(paths, vector_params)
                         with open(svg_path, 'w', encoding='utf-8') as f:
                             f.write(svg)
                         svg_paths.append((svg_path, svg_filename))
                     return svg_paths if svg_paths else None
             # Если только один ImageVector (старый режим)
-            vector_params = converterScript.extract_vector_params(kotlin_code)
-            path_blocks = converterScript.extract_path_blocks(kotlin_code)
+            vector_params = CLI.extract_vector_params(kotlin_code)
+            path_blocks = CLI.extract_path_blocks(kotlin_code)
             paths = []
             for params_str, block in path_blocks:
-                style = converterScript.parse_path_params(params_str)
-                path_data = converterScript.extract_path_data(block)
+                style = CLI.parse_path_params(params_str)
+                path_data = CLI.extract_path_data(block)
                 if not path_data.strip():
                     continue
                 paths.append((path_data, style))
             if not paths:
                 print(f"Файл {file_path} не содержит путей для SVG.")
                 return None
-            svg = converterScript.convert_to_svg(paths, vector_params)
+            svg = CLI.convert_to_svg(paths, vector_params)
             svg_filename = base_name + '.svg'
             svg_path = os.path.join(self.temp_dir, svg_filename)
             with open(svg_path, 'w', encoding='utf-8') as f:
@@ -590,6 +591,17 @@ class MainWindow(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    app.setApplicationName("ImageVector to SVG Converter")
+    # Для macOS — иконка в Dock
+    if sys.platform == "darwin":
+        try:
+            from AppKit import NSApplication, NSImage
+            import os
+            nsapp = NSApplication.sharedApplication()
+            img = NSImage.alloc().initByReferencingFile_(os.path.abspath("icon.png"))
+            nsapp.setApplicationIconImage_(img)
+        except Exception as e:
+            print("Не удалось установить иконку для Dock:", e)
     window = MainWindow()
     window.show()
     sys.exit(app.exec())

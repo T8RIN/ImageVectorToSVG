@@ -159,7 +159,8 @@ def parse_path_params(params_str):
     if stroke and stroke != 'none' and stroke_width is None:
         stroke_width = 1
     # DEBUG print
-    print(f"PATH STYLE: fill={fill}, alpha={final_alpha}, stroke={stroke}, stroke_alpha={stroke_alpha}, stroke_width={stroke_width}, fill_rule={fill_rule}")
+    print(
+        f"PATH STYLE: fill={fill}, alpha={final_alpha}, stroke={stroke}, stroke_alpha={stroke_alpha}, stroke_width={stroke_width}, fill_rule={fill_rule}")
     return {
         "fill": fill if fill is not None else 'none',
         "alpha": final_alpha,
@@ -275,6 +276,7 @@ def extract_path_data(block):
         "horizontalEllipsisRadius": "rx", "verticalEllipsisRadius": "ry",
         "dx1": "x1", "dy1": "y1", "dx": "dx1", "dy": "dy1"
     }
+
     def find_commands(block):
         i = 0
         n = len(block)
@@ -287,13 +289,15 @@ def extract_path_data(block):
             name = block[start:i]
             if not name:
                 continue
-            if i < n and block[i] == '(': 
+            if i < n and block[i] == '(':
                 i += 1
                 arg_start = i
                 depth = 1
                 while i < n and depth > 0:
-                    if block[i] == '(': depth += 1
-                    elif block[i] == ')': depth -= 1
+                    if block[i] == '(':
+                        depth += 1
+                    elif block[i] == ')':
+                        depth -= 1
                     i += 1
                 arg_str = block[arg_start:i - 1]
                 if name in valid_commands:
@@ -311,6 +315,7 @@ def extract_path_data(block):
                         print(f"⚠️ Ошибка в команде {name} с аргументами {args}: {e}")
             else:
                 i += 1
+
     find_commands(block)
     raw_path = " ".join(path_commands)
     return clean_svg_path(raw_path)
@@ -366,7 +371,7 @@ def extract_named_vector_blocks(kotlin_code: str):
             elif block_code[i] == '}':
                 brace_level -= 1
             i += 1
-        block = block_code[:i-1]
+        block = block_code[:i - 1]
         results.append((f"{style}_{name}", block))
     return results
 
