@@ -3,13 +3,19 @@ import re
 import sys
 import tempfile
 
+from PyQt6.QtCore import QSize
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPainter, QColor, QIcon, QFont, QSyntaxHighlighter, QTextCharFormat
-from PyQt6.QtGui import QPalette
+from PyQt6.QtGui import QFont, QPalette, QColor, QIcon
+from PyQt6.QtGui import QPainter, QSyntaxHighlighter, QTextCharFormat
 from PyQt6.QtSvgWidgets import QSvgWidget
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QListWidget, QPushButton, QFileDialog, QLabel, QListWidgetItem,
-    QHBoxLayout, QTextEdit, QFrame, QMessageBox, QProgressDialog, QMenu
+    QMainWindow, QListWidget, QFileDialog,
+    QLabel, QListWidgetItem,
+    QMessageBox, QProgressDialog, QMenu
+)
+from PyQt6.QtWidgets import (
+    QWidget, QTextEdit, QPushButton, QVBoxLayout, QHBoxLayout, QFrame
 )
 
 import converterScript
@@ -77,15 +83,36 @@ class SvgPreviewWidget(QFrame):
             f"background: {bg};"
             "}"
             "QLabel[role=\"filename\"] {"
-            "background: #22262c;"
-            "color: #fff;"
+            "background: transparent;"
+            "color: #cccccc;"
+            "border: none;"
+            "font-size: 14px;"
+            "font-weight: 400;"
+            "margin-top: 12px;"
+            "margin-bottom: 0;"
+            "qproperty-alignment: AlignLeft;"
+            "}"
+            "QPushButton[role=\"showcode\"] {"
+            "background: rgba(255,255,255,0.12);"
+            "border-radius: 14px;"
+            "border: 1px solid #444;"
+            "padding: 2px 8px;"
+            "}"
+            "QPushButton[role=\"showcode\"]:hover {"
+            "background: rgba(255,255,255,0.25);"
+            "border: 1.5px solid #888;"
+            "}"
+            "QPushButton[role=\"copybtn\"] {"
+            "background: rgba(255,255,255,0.10);"
             "border-radius: 8px;"
-            "padding: 2px 12px;"
+            "color: #fff;"
+            "border: 1px solid #444;"
+            "padding: 4px 16px;"
             "font-size: 13px;"
-            "font-weight: 500;"
-            "margin-top: 6px;"
-            "margin-bottom: 6px;"
-            "qproperty-alignment: AlignCenter;"
+            "}"
+            "QPushButton[role=\"copybtn\"]:hover {"
+            "background: rgba(255,255,255,0.22);"
+            "border: 1.5px solid #888;"
             "}"
             "QPushButton {"
             "background: #23272e;"
@@ -115,30 +142,40 @@ class SvgPreviewWidget(QFrame):
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(18, 14, 18, 14)
         self.layout.setSpacing(8)
+        # Основной горизонтальный слой: слева иконка+название, справа глаз
+        main_row = QHBoxLayout()
+        main_row.setContentsMargins(0, 0, 0, 0)
+        main_row.setSpacing(0)
+        # Слева: вертикально иконка и название
+        left_col = QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(4)
         self.checkerboard = CheckerboardWidget(svg_path)
-        self.layout.addWidget(self.checkerboard, alignment=Qt.AlignmentFlag.AlignHCenter)
+        left_col.addWidget(self.checkerboard, alignment=Qt.AlignmentFlag.AlignLeft)
         self.label = QLabel(os.path.basename(svg_path))
         self.label.setProperty("role", "filename")
-        self.layout.addWidget(self.label, alignment=Qt.AlignmentFlag.AlignHCenter)
-        btn_row = QHBoxLayout()
-        btn_row.setSpacing(6)
+        left_col.addWidget(self.label, alignment=Qt.AlignmentFlag.AlignLeft)
+        main_row.addLayout(left_col)
+        # Справа по центру вертикально: глаз
+        main_row.addStretch(1)
         self.show_code_btn = QPushButton()
-        self.show_code_btn.setText('Показать код SVG')
-        self.show_code_btn.setIcon(QIcon.fromTheme('document-preview'))
+        self.show_code_btn.setProperty("role", "showcode")
+        self.show_code_btn.setToolTip('Показать SVG код')
+        icon_eye = QIcon.fromTheme('eye')
+        if icon_eye.isNull():
+            icon_eye = QIcon.fromTheme('visibility')
+        if not icon_eye.isNull():
+            self.show_code_btn.setIcon(icon_eye)
+        self.show_code_btn.setText('Показать SVG код')
+        self.show_code_btn.setFixedHeight(28)
         self.show_code_btn.clicked.connect(self.toggle_code)
-        btn_row.addWidget(self.show_code_btn)
-        self.copy_btn = QPushButton()
-        self.copy_btn.setText('Скопировать')
-        self.copy_btn.setIcon(QIcon.fromTheme('edit-copy'))
-        self.copy_btn.clicked.connect(self.copy_code)
-        self.copy_btn.setVisible(False)
-        btn_row.addWidget(self.copy_btn)
-        btn_row.addStretch(1)
-        self.layout.addLayout(btn_row)
+        main_row.addWidget(self.show_code_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self.layout.addLayout(main_row)
+        # Кнопка копирования — абсолютное позиционирование в правом верхнем углу блока кода
         self.code_edit = Editor()
+        self.expanded = False
         self.code_edit.setVisible(False)
-        # Подключаем подсветку
-        self.highlighter = SvgHighlighter(self.code_edit.document())
+        self.highlighter = SvgHighlighter(self.code_edit.editor.document())
         self.layout.addWidget(self.code_edit)
         self.setLayout(self.layout)
 
@@ -146,21 +183,29 @@ class SvgPreviewWidget(QFrame):
         if not self.expanded:
             with open(self.svg_path, 'r', encoding='utf-8') as f:
                 svg_code = f.read()
-            self.code_edit.setPlainText(svg_code)
+            self.code_edit.editor.setPlainText(svg_code.strip())
             self.code_edit.setVisible(True)
-            self.copy_btn.setVisible(True)
-            self.show_code_btn.setText('Скрыть код SVG')
+            self.show_code_btn.setToolTip('Скрыть SVG код')
+            icon_eye_off = QIcon.fromTheme('eye-closed')
+            if icon_eye_off.isNull():
+                icon_eye_off = QIcon.fromTheme('visibility-off')
+            if not icon_eye_off.isNull():
+                self.show_code_btn.setIcon(icon_eye_off)
+            self.show_code_btn.setText('Скрыть SVG код')
             self.expanded = True
         else:
             self.code_edit.setVisible(False)
-            self.copy_btn.setVisible(False)
-            self.show_code_btn.setText('Показать код SVG')
+            self.show_code_btn.setToolTip('Показать SVG код')
+            icon_eye = QIcon.fromTheme('eye')
+            if icon_eye.isNull():
+                icon_eye = QIcon.fromTheme('visibility')
+            if not icon_eye.isNull():
+                self.show_code_btn.setIcon(icon_eye)
+            self.show_code_btn.setText('Показать SVG код')
             self.expanded = False
-        self.update_list_item_size()
 
-    def copy_code(self):
-        clipboard = QApplication.instance().clipboard()
-        clipboard.setText(self.code_edit.toPlainText())
+        self.code_edit.autoResize()
+        self.update_list_item_size()
 
     def update_list_item_size(self):
         parent = self.parent()
@@ -175,44 +220,110 @@ class SvgPreviewWidget(QFrame):
                     break
 
 
-class Editor(QTextEdit):
-    def __init__(self):
-        super().__init__()
-        self.setReadOnly(True)
+class Editor(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-        # Шрифт
-        font = QFont("Fira Mono, Consolas, monospace")
-        font.setPointSize(12)
-        font.setStyleHint(QFont.StyleHint.Monospace)
-        self.setFont(font)
+        # Основной layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        # Цветовая палитра
-        palette = QPalette()
-        palette.setColor(QPalette.ColorRole.Base, QColor("#1e1e1e"))  # Фон
-        palette.setColor(QPalette.ColorRole.Text, QColor("#d4d4d4"))  # Текст
-        palette.setColor(QPalette.ColorRole.Highlight, QColor("#264f78"))  # Выделение
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))  # Выделенный текст
-        self.setPalette(palette)
-
-        # Стиль через CSS
-        self.setStyleSheet("""
-            QTextEdit {
-                border: 1px solid #3c3c3c;
-                border-radius: 6px;
-                padding: 6px;
-                background-color: #1e1e1e;
-                color: #d4d4d4;
-                font-family: 'Fira Mono', 'Consolas', monospace;
+        # Контейнер для текста и кнопки
+        frame = QFrame()
+        frame.setObjectName("editorFrame")
+        frame.setStyleSheet("""
+            QFrame#editorFrame {
+                border: 1px solid #444;
+                border-radius: 10px;
             }
         """)
 
-        self.textChanged.connect(self.autoResize)
+        frame_layout = QVBoxLayout(frame)
+        frame_layout.setSpacing(0)
+
+        # Текстовое поле
+        self.editor = QTextEdit()
+        self.editor.setReadOnly(True)
+
+        font = QFont("Fira Mono, Consolas, monospace")
+        font.setPointSize(12)
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        self.editor.setFont(font)
+
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Base, QColor("#1e1e1e"))
+        palette.setColor(QPalette.ColorRole.Text, QColor("#d4d4d4"))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#264f78"))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+        self.editor.setPalette(palette)
+        self.editor.setStyleSheet("QTextEdit { border: none; padding-top: 0px; }")
+
+        # Кнопка копирования
+        self.copy_btn = QPushButton()
+        self.copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_btn.setToolTip("Скопировать SVG")
+        self.copy_btn.setIconSize(QSize(14, 14))
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                min-width: 24px;
+                min-height: 24px;
+                max-width: 24px;
+                max-height: 24px;
+                border-radius: 8px;
+                background: rgba(255,255,255,0.10);
+                border: 1px solid #444;
+                color: #fff;
+                font-size: 12px;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background: rgba(255,255,255,0.22);
+                border: 1.5px solid #888;
+            }
+        """)
+
+        icon = QIcon.fromTheme("edit-copy")
+        if icon.isNull():
+            icon = QIcon.fromTheme("content-copy")
+        if not icon.isNull():
+            self.copy_btn.setIcon(icon)
+        else:
+            self.copy_btn.setText("📋")
+
+        self.copy_btn.clicked.connect(self.copy_code)
+
+        # Кнопка поверх редактора
+        button_layout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.addStretch()
+        button_layout.addWidget(self.copy_btn)
+
+        frame_layout.addLayout(button_layout)
+        frame_layout.addWidget(self.editor)
+
+        layout.addWidget(frame)
+
+        self.editor.textChanged.connect(self.autoResize)
+
+    def copy_code(self):
+        clipboard = QApplication.instance().clipboard()
+        clipboard.setText(self.editor.toPlainText().strip())
 
     def autoResize(self):
-        self.document().setTextWidth(self.viewport().width())
-        margins = self.contentsMargins()
-        height = int(self.document().size().height() + margins.top() + margins.bottom())
-        self.setFixedHeight(height)
+        doc = self.editor.document()
+        doc.setTextWidth(self.editor.viewport().width())
+        margins = self.editor.contentsMargins()
+        height = int(doc.size().height() + margins.top() + margins.bottom())
+        self.setFixedHeight(height + 52)
+
+    def setPlainText(self, text: str):
+        self.editor.setPlainText(text)
+
+    def toPlainText(self):
+        return self.editor.toPlainText()
+
+    def document(self):
+        return self.editor.document()
 
     def resizeEvent(self, event):
         self.autoResize()
