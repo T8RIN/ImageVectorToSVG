@@ -7,7 +7,7 @@ Handy app, which will help you to convert ImageVector icons from Jetpack Compose
 ![logo](https://raw.githubusercontent.com/T8RIN/ImageVectorToSVG/refs/heads/main/icon.png)
 
 
-<\div>
+</div>
 
 
 # Usage
