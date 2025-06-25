@@ -2,10 +2,9 @@
 
 # ComposeToSVG
 
+<image src="https://raw.githubusercontent.com/T8RIN/ImageVectorToSVG/refs/heads/main/icon.png" width="55%"/>
+
 Handy app, which will help you to convert ImageVector icons from Jetpack Compose *.kt to common used vector graphics format SVG
-
-<image src="https://raw.githubusercontent.com/T8RIN/ImageVectorToSVG/refs/heads/main/icon.png" width="50%"/>
-
 
 </div>
 
